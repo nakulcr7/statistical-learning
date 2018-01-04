@@ -1,0 +1,437 @@
+---
+title: "Solutions to Homework 2"
+author: "Nakul Camasamudram"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = '>')
+library(dplyr)
+library(broom)
+library(ggplot2)
+library(leaps)
+library(glmnet)
+library(readr)
+```
+
+### Problem 1
+
+Members of my project group:
+  - Nakul Camasamudram, MS Computer Science - Summer 2018
+  - Abhay Kasturia, MS Computer Science - Spring 2018
+
+
+### Problem 2
+
+**(a)**
+```{r}
+set.seed(123)
+n = 100
+x <- runif(n, min = -2, max = 2)
+e <- rnorm(n, mean = 0, sd = 4)
+y <- 2 +(3*x) + e
+
+mean_x = mean(x)
+mean_y = mean(y)
+
+b_1 <- sum((x - mean_x) * (y - mean_y)) / sum((x-mean_x)^2)
+b_0 <- mean_y - (b_1 * mean_x)
+
+cat("Estimates:\n")
+cat("Coeffecient b1: ", b_1, "\n")
+cat("Slope b0: ", b_0, "\n")
+```
+
+The values of slope(1.78) and coefficient(2.91) are pretty close to the actual values
+(2 and 3 respectively).
+
+**(b)**
+
+*Stochastic Gradient Descent:*
+
+```{r}
+set.seed(123)
+
+stochastic_gradient_descent <- function(x, y, learn_rate){
+  # set.seed(123) ensures that b_0 and b_1 will never be 0
+  b_0 <- runif(1)
+  b_1 <- runif(1)
+
+  # learn_rate <- 0.01
+  b_0_prev <- 0 
+  b_1_prev <- 0 
+  
+  i = 0
+  
+  while(i < 1000 && (abs(b_1_prev - b_1) > 0.1 || abs(b_0_prev - b_0) > 0.1)){
+    i = i + 1
+    b_0_prev <- b_0
+    b_1_prev <- b_1
+    for(k in 1:length(x)){
+      b_0 = b_0 + (learn_rate * ((y[k] - (b_0 + b_1*x[k]))*x[k]))
+      b_1 = b_1 + (learn_rate * ((y[k] - (b_0 + b_1*x[k]))*x[k]))  
+    }
+    i = i+1
+  }
+  return(c(i, b_0, b_1))
+}
+
+out <- stochastic_gradient_descent(x, y, 0.01)
+cat("Estimates:\n")
+cat("Coefficient b1: ", out[2], "\n")
+cat("Slope b0: ", out[3], "\n")
+```
+
+
+*Batch Gradient Descent:*
+
+```{r}
+set.seed(123)
+
+batch_gradient_descent <- function(x, y, learn_rate) {
+  # set.seed(123) ensures that b_0 and b_1 will never be 0
+  b_0 <- runif(1)
+  b_1 <- runif(1)
+
+  # learn_rate <- 0.01
+  b_0_prev <- 0 
+  b_1_prev <- 0 
+
+  i = 0
+  while(i < 1000 && (abs(b_1_prev - b_1) > 0.1 || abs(b_0_prev - b_0) > 0.1)){
+    i = i + 1
+    b_0_prev <- b_0
+    b_1_prev <- b_1
+    b_0 = b_0 + learn_rate * sum(1.0 * (y - (b_0 + b_1*x)))
+    b_1 = b_1 + learn_rate * sum(x * (y - (b_0 + b_1*x)))
+  }  
+  
+  return(c(i, b_0, b_1))
+  
+}
+
+out <- batch_gradient_descent(x, y, 0.01)
+cat("Estimates:\n")
+cat("Coefficient b1: ", out[3], "\n")
+cat("Slope b0: ", out[2], "\n")
+
+```
+
+**(d)**
+```{r}
+slopes_b <- c()
+slopes_s <- c()
+
+for(i in 1:200) {
+  slopes_b <- c(slopes_b, batch_gradient_descent(x, y, 0.01))
+  slopes_s <- c(slopes_s, stochastic_gradient_descent(x, y, 0.01))
+}
+
+hist(slopes_b)
+hist(slopes_s)
+```
+
+
+
+### Problem 3
+
+**(a)**
+```{r}
+data(diamonds)
+boxplot(diamonds$price ~ diamonds$color, xlab = "Color", ylab = "Price")
+```
+By observing the median prices of each color, there seems to be no relation between the price of a diamond and its color. For example, color J which is supposed to be the worst color has higher quartile prices as compared to the best color D. Also, there are no distinct outliers.
+
+**(b)**
+
+```{r}
+other_diamonds <- diamonds
+other_diamonds$group <- with(other_diamonds,
+                    cut(other_diamonds$carat,
+                        breaks = quantile(other_diamonds$carat, prob = seq(0, 1, by = 0.2)),
+                        include.lowest = TRUE))
+p <- ggplot(other_diamonds, aes(x = color, y = price, color = group))
+p + geom_boxplot()
+```
+
+Again, there seems to be no relation between the diamond "colors" and "prices". However, there is a directly proportional relationship between "carat" and "price".
+Also, there is a directly proportional relationship between "carat" and the interquartile range of the prices.
+
+**(c)**
+
+Linear model with predictors "color" and "carat", and response "price"
+
+```{r}
+
+ratio = sample(1:nrow(diamonds), size = 0.7*nrow(diamonds))
+d_training <- diamonds[ratio, ]
+d_validation <- diamonds[-ratio, ]
+d_train <- lm(price ~ color + carat, data = d_training)
+summary(d_train)
+```
+
+
+```{r}
+price_real <- d_validation$price
+price_prediction <- predict(d_train, newdata = d_validation)
+plot(x = price_real, y = price_prediction, xlab = "Real Prices",
+ylab = "Predicted Prices", main = "Price ~ Color + Carat", col = "blue")
+abline(a = 0, b = 1)
+```
+
+### Problem 4
+
+#### Preliminary steps
+```{r}
+set.seed(123)
+credit <- read_csv("Credit.csv") %>%
+  select(-X1)
+# Convert column names to lowercase just for convenience
+names(credit) <- stringr::str_to_lower(names(credit))
+
+```
+
+#### a. Select Training set
+```{r}
+ratio <- sample(1:nrow(credit), 200)
+credit_training <- credit[ratio, ]
+credit_validation <- credit[-ratio, ]
+```
+
+#### b. Data Exploration
+
+**One variable summary statistics:**
+```{r}
+summary(credit_training)
+```
+
+**Two variable summary statistics:**
+```{r}
+# Observed correlations
+# Income: Limit, Rating
+# Limit: Income, Rating, Balance
+# Rating: Income, Limit, Balance
+
+continuous_training_data <- select(credit_training, income, limit, rating, cards, age, education)
+pairs(continuous_training_data, main="Correlation between numeric features")
+smoothScatter(credit_training$income, credit_training$rating, xlab = "Income", ylab = "Rating")
+smoothScatter(credit_training$income, credit_training$limit, xlab = "Income", ylab = "Limit")
+round(cor(continuous_training_data), digits = 2)
+```
+
+As seen in the above graphs and the correlation table, there is a high correlation between Income and Rating, and, Income and Limit. Correlations can be explored between these features for the model. Since the correlation betweem Rating and Limit is 1.00, from the perspective of the model, they can be used interchangeably, or one of them can be dropped.
+
+```{r}
+any(is.na(credit_training))
+```
+There are no NA values in the dataset.
+
+```{r}
+boxplot(scale(continuous_training_data))
+```
+From the boxplot above, there are no particular outliers that can be singled out. 
+
+#### c. Assumption of Normality:
+```{r}
+lm_train <- lm(balance~., data=credit_training)
+summary(lm_train)
+# Evaluate summary(lm_train):
+# https://feliperego.github.io/blog/2015/10/23/Interpreting-Model-Output-In-R
+```
+From the above information, we see that "income", "limit", "cards" and being a student are important features in a linear model that predicts "balance".
+
+**Distribution of residuals:**
+
+```{r}
+# Density plot
+plot(density(lm_train$residuals), main = "Density plot of residuals")
+```
+From the above density plot, we see that the first half of the residuals approximate the Normal Distribution. However there are outliers to the right. Let's have a look at the qq plots for a clearer picture.
+
+```{r}
+# QQ Plot of residuals
+qqnorm(lm_train$residuals, main = "Normal qqplot of residuals")
+qqline(lm_train$residuals)
+```
+The points fall along a line in the middle of the graph, but curve off in the extremities. This means that the training data has more extreme values than would be expected if it truly came from a Normal Distribution.
+
+If $balance$ is transformed to $balance^3$, the points to the left are very close to the line, but, the points on the right are further away.
+
+```{r}
+lm_train_transformed <- lm((balance^3)~., data=credit_training)
+qqnorm(lm_train_transformed$residuals, main = "Normal qqplot of residuals with (balance^3)")
+qqline(lm_train_transformed$residuals)
+```
+
+Let's check the outlier and see if it makes sense to remove it.
+```{r}
+i=which(lm_train$residuals==max(lm_train$residuals));
+credit_training[i,]
+```
+
+The above doesn't really stand out so it will remain as a part of the dataset.
+
+
+#### d. Variable Selection
+
+**Subset Selection**
+
+```{r}
+regfit.full <- regsubsets(balance~., data = credit_training, really.big = TRUE)
+reg.summary <- summary(regfit.full)
+reg.summary
+```
+
+Let us estimate the test error by adding a penalty to the training error to account for the bias due to overfitting using four methods: *Adjusted $R^2$*, *Cp* and *Bayesian information criterion(BIC)*.
+
+```{r}
+par(mfrow = c(2,2))
+plot(reg.summary$rss, xlab = "Number of variables", ylab = "Residual Sum of Squares (RSS)", type = "l")
+plot(reg.summary$adjr2, xlab = "Number of variables", ylab = "Adjacent R square", type = "l")
+plot(reg.summary$cp, xlab = "Number of variables", ylab = "CP", type = "l")
+plot(reg.summary$bic, xlab = "Number of variables", ylab = "BIC", type = "l")
+```
+
+From the above graphs, we see that picking 4 predictors(income, limit, cards, student==Yes) is a good for the model. Let's confirm it
+
+```{r}
+which.min(reg.summary$bic)
+```
+
+
+**Linear model based on 4 predictors**
+```{r}
+subset_select_model <- lm(balance ~ income + limit + cards + student, data = credit_training)
+coef(regfit.full, 4)
+```
+
+The above means that for instance, if the there is a unit increase in "cards", the balance increases by "19.4328604"
+
+#### e. Variable Selection
+
+**Ridge Regression**
+
+```{r}
+x <- model.matrix(balance~., credit_training)[,-1]
+y <- credit_training$balance
+lambda = 10^seq(10,-2, length = 100)
+ridge.mod = glmnet(x, y, alpha=0, lambda = lambda)
+plot(ridge.mod, main = "Ridge Regression",label = TRUE, xvar = "lambda", xlim = c(-5,15))
+```
+Above, I have chosen $\lambda$ values that range from $10^{10}$ to $10^{-2}$. This covers the $\lambda = 0$ case as well, where the coefficients are the same as the ones in linear regression.
+
+Insead of choosing the $\lambda$ value arbitrarily, let's perform 10 fold cross validation to pick the best $\lambda$ that minimizes the Mean Squared Error.
+
+```{r}
+cv.out <- cv.glmnet(x,y, alpha = 0)
+plot(cv.out)
+```
+
+We can see above that regardless of the value of $\lambda$, the the number of predictors chosen is always 11. This is because Ridge Regression does not perform variable selection unlike Lasso Regression.
+
+```{r}
+bestlam.ridge = cv.out$lambda.min
+bestlam.ridge
+log(bestlam.ridge)
+```
+
+According to Ridge Regression, the $\lambda$ with the least Mean Squared Error is 43.63804. Let's use this value to fit a regression model
+
+```{r}
+ridge.mode <- glmnet(x, y, alpha=0, lambda = bestlam.ridge)
+predict(ridge.mode, s = bestlam.ridge, type = "coefficients")
+```
+
+
+**Lasso Regression**
+
+Performing Lasso Regression with the same range of $\lambda$ values,
+
+```{r}
+lasso.mod <- glmnet(x,y, alpha = 1, lambda = lambda)
+plot(lasso.mod, main = "Lasso Regression", label = TRUE, xvar = "lambda", xlim = c(-5,10))
+```
+
+Using cross validation to get the best $\lambda$,
+
+```{r}
+cv.out <- cv.glmnet(x,y,alpha = 1)
+plot(cv.out)
+```
+
+Lasso Regression does variable selection unlike Ridge Regression. The two vertical lines above show the range of the number of predictors that minimize the Mean Square Error. In this case, 9 or 10.
+
+```{r}
+bestlam.lasso <- cv.out$lambda.min
+bestlam.lasso
+log(bestlam.lasso)
+```
+According to the above, the best $\lambda$ value possible is 0.7805316. Let's use this to fit a regression model.
+
+```{r}
+lasso.mode <- glmnet(x, y, alpha=1, lambda = bestlam.lasso)
+predict(lasso.mode, s = bestlam.lasso, type = "coefficients")[1:12,]
+```
+
+Ignoring the predictors with value 0, we see that Lasso Regression has chosen 10 predictors. They are "income", "limit", "rating", "cards", "age", "education", "gender==Male", "student=yes", "married=yes", "ethnicity=Asian", "ethnicity=Caucasian".
+
+#### f & e. Performance Evaluation + Interpretation
+
+We have four models: 
+  * Regression with all predictors
+  * Regression with predictors from subset selection
+  * Ridge Regression
+  * Lasso Regression
+  
+```{r}
+# Variables to plot
+real_balance <- credit_validation$balance
+reg_all_pred <- predict(lm_train, newdata = credit_validation)
+subset_pred <- predict(subset_select_model, newdata = credit_validation)
+
+newx = data.matrix(model.matrix(balance~., credit_validation)[, -1])
+lasso_pred <- predict(lasso.mode, newx = newx)
+ridge_pred <- predict(ridge.mode, newx = newx)
+
+# Visualizing the four models
+par(mfrow = c(1, 1))
+plot(x = real_balance, y = reg_all_pred, xlab = "Actual Balance",
+ylab = "Predicted Balance", main = "All Predictors", col = "red", asp=1)
+abline(a = 0, b = 1)
+
+plot(x = real_balance, y = subset_pred, xlab = "Actual Balance",
+ylab = "Predicted Balance", main = "Best Subset Selection", col = "orange", asp=1)
+abline(a = 0, b = 1)
+
+plot(x = real_balance, y = lasso_pred, xlab = "Actual Balance",
+ylab = "Predicted Balance", main = "Lasso Regression", col = "blue", asp=1)
+abline(a = 0, b = 1)
+
+plot(x = real_balance, y = ridge_pred, xlab = "Actual Balance",
+ylab = "Predicted Balance", main = "Ridge Regression", col = "green", asp=1)
+abline(a = 0, b = 1)
+
+```
+
+
+```{r}
+# Mean Squared Errors of the above four models
+error_reg_all_pred <- mean((reg_all_pred - real_balance)^2)
+error_subset_pred <- mean((subset_pred - real_balance)^2)
+error_lasso_pred <- mean((lasso_pred - real_balance)^2)
+error_ridge_pred <- mean((ridge_pred - real_balance)^2)
+error_reg_all_pred
+error_subset_pred
+error_lasso_pred
+error_ridge_pred
+order(c(error_reg_all_pred, 
+          error_subset_pred, 
+          error_lasso_pred, 
+          error_ridge_pred),
+      decreasing = F)
+```
+
+Lasso Regression has the lowest MSE and hence is the best choice.

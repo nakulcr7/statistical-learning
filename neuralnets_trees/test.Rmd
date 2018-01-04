@@ -1,0 +1,70 @@
+---
+title: "test"
+author: "Nakul Camasamudram"
+date: "11/28/2017"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
+```
+
+```{r}
+data_df <- as.data.frame(iris)
+idx <- data_df$Species %in% c("virginica", "versicolor")
+data_df <- data_df[idx, ]
+y <- ifelse(data_df$Species=="virginica", 1, 0)
+
+X <- data_df[c(1,3)]
+X <- as.matrix(X/max(X))
+
+head(X)
+head(y)
+```
+
+```{r}
+model <- glm(y ~ X, family=binomial(link='logit'))
+```
+
+
+
+```{r}
+logLik(model)  # Log-likelihood
+
+# Calculate log-likelihood ourself
+log_likelihood <- function(X_mat, y, beta_hat)
+{
+  scores <- X_mat %*% beta_hat
+  # Need to broadcast (y %*% scores)
+  ll <- (y * scores) - log(1+exp(scores))
+  sum(ll)
+}
+
+log_likelihood(cbind(1, X), y, coef(model)) 
+```
+
+
+```{r}
+# Calculate activation function (sigmoid for logit)
+sigmoid <- function(z){1.0/(1.0+exp(-z))}
+
+logistic_reg <- function(X, y, epochs, lr)
+{
+  X_mat <- cbind(1, X)
+  beta_hat <- matrix(0, nrow=ncol(X_mat))
+  for (j in 1:epochs)
+  {
+    residual <- sigmoid(X_mat %*% beta_hat) - y
+    # Update weights with gradient descent
+    delta <- t(X_mat) %*% as.matrix(residual, ncol=nrow(X_mat)) *  (1/nrow(X_mat))
+    beta_hat <- beta_hat - (lr*delta)
+  }
+  # Print log-likliehood
+  print(log_likelihood(X_mat, y, beta_hat))
+  # Return
+  beta_hat
+}
+
+beta_hat <- logistic_reg(X, y, 300000, 5)
+```

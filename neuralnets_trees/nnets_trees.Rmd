@@ -1,0 +1,358 @@
+---
+title: "Solutions to Homework 4"
+author: "Nakul Camasamudram"
+date: "10/18/2017"
+header-includes:
+  - \usepackage{graphicx}
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = '>')
+setwd("~/Workspace/northeastern/cs6140/hw5/")
+```
+
+## Problem 1
+
+### a.
+
+$$
+\includegraphics[width=0.8\textwidth]{1.jpg}
+$$
+
+
+$$
+\includegraphics[width=0.8\textwidth]{2.jpg}
+$$
+
+
+$$
+\includegraphics[width=0.8\textwidth]{3.jpg}
+$$
+
+
+$$
+\includegraphics[width=0.8\textwidth]{4.jpg}
+$$
+
+### c
+
+Below is the pseudocode to find the optimal subtree
+
+$$
+\includegraphics[width=0.6\textwidth]{algo.jpg}
+$$
+
+## Problem 2
+
+### Data Initialization
+
+```{r, message=FALSE, warning=FALSE}
+# Imports
+library(dplyr)
+
+rm(list=ls())
+set.seed(123)
+
+# Read the data
+saheart <- read.table("SAheart.txt", sep = ",", header = TRUE) %>% select(-row.names)
+
+# Separate input and output
+X <- saheart[-c(5, 10)]
+X <- as.matrix(X/max(X)) # Normalized matrix for faster convergence
+y <- saheart$chd
+```
+
+
+### Use existing logistic regression implementation
+
+```{r}
+logreg.fit <- glm(y ~ X, family = binomial(link = "logit"))
+
+# Parameters
+coef(logreg.fit)
+```
+
+```{r}
+# Prediction accuracy
+logreg.pred <- predict(logreg.fit, newdata = saheart[-c(5, 10)], type='response')
+logreg.pred <- ifelse(logreg.pred > 0.5, 1, 0)
+acc <- 1 - mean(logreg.pred != saheart$chd)
+acc
+```
+
+### Perceptron as logistic regression
+
+```{r}
+# Sigmoid activation
+sigmoid <- function(z){1.0/(1.0+exp(-z))}
+
+# Perceptron
+perceptron <- function(X, y, lr)
+{
+  delta <- 1e-8  # Allowed difference between consecutive parameter estiamtes
+  X_mat <- cbind(1, X)
+  w <- matrix(0, nrow=ncol(X_mat))  # Initialize weights as zeros
+  w_prev <- matrix(1, nrow=ncol(X_mat))
+  w_diff <- abs(w - w_prev)
+  
+  # Batch gradient descent  
+  while(length(w_diff[w_diff > delta]) > 1)  # Until convergence
+  {
+    residual <- sigmoid(X_mat %*% w) - y
+    del <- t(X_mat) %*% as.matrix(residual, ncol=nrow(X_mat)) *  (1/nrow(X_mat))  # Derivative
+    
+    w_prev <- w
+    w <- w - (lr*del)  # New weights
+    w_diff <- abs(w - w_prev)
+  }
+  
+  return(w)
+}
+
+weights <- perceptron(X, y, 5)
+
+# Parameters
+weights
+```
+
+
+```{r}
+X <- saheart[-c(5, 10)]
+X <- as.matrix(X/max(X))
+X <- cbind(1, X)
+result <- sigmoid(X %*% weights)
+result <- ifelse(result > 0.5, 1, 0)
+acc <- 1 - mean(result != saheart$chd)
+
+# Prediction accuracy
+acc
+```
+
+
+Both the methods above have the exact same coefficients and prediction accuracy.
+
+## Problem 3
+
+### a. 
+
+$$
+\includegraphics[width=0.8\textwidth]{nn1.jpg}
+$$
+
+- Superscripts and subscripts refer to the layers and activation units respectively. For example, $a_2^{[1]}$ refers to the second unit of layer 1.
+- When the subscript is not present, the term is a vector that represents all the activation units of a layer. For example, $a^{[1]} = [a_1^{[1]} \ a_2^{[2]} \ a_3^{[3]}]^T$.
+
+### b.
+
+Number of parameters = (3 x 3) + (4 x 4) + (4 x 5) + (2 x 5) + (1 x 3) = 9 + 16 + 20 + 10 + 3 = 58
+
+### c.
+
+Let's introduce a few notations so that the below equations are better understandable.
+
+- $z^{[l]}$ is a column vector of length $n_l$ where $n_l$ is the number of activation units in the $l^{th}$ layer. It is a weighted sum of the activation outputs of layer $l$ - 1 and a bias term $b^{[l-1]}$
+- $b^{[l]}$ is a column vector of length $n_l$ that represents the bias input to $l^{th}$ activation layer.
+- $a^{[l]}$ is the activation vector of length $n_l$ such that $a^{[l]} = \sigma(z^{[l]})$ where $\sigma$, the activation function, is applied element-wise on $z^{[l]}$.
+- $W^{[l]}$ is a matrix whose elements $W_{ij}^{[l]}$ denote the weight associated with the connection between unit $j$ in layer $l-1$, and unit $i$ of layer $l$.
+- The dimensions of various terms below are represented by their subscripts. Example, $z_{(m\times n)}^{[l]}$ has $m$ rows and $n$ columns.
+
+\underline{Layer 1:}
+$$
+\begin{aligned}
+  z^{[1]}_{(3\times1)} &= W^{[1]}_{(3\times 2)}a^{[0]}_{(2\times 1)} + b^{[1]}_{(3\times1)} \\
+  a^{[1]}_{(3\times1)} &= \sigma(z^{[1]}_{(3\times1)})
+\end{aligned}
+$$
+
+\underline{Layer 2:}
+$$
+\begin{aligned}
+  z^{[2]}_{(4\times1)} &= W^{[2]}_{(4\times 3)}a^{[1]}_{(3\times 1)} + b^{[2]}_{(4\times1)} \\
+  a^{[2]}_{(4\times1)} &= \sigma(z^{[2]}_{(4\times1)})
+\end{aligned}
+$$
+
+\underline{Layer 3:}
+$$
+\begin{aligned}
+  z^{[3]}_{(4\times1)} &= W^{[3]}_{(4\times4)}a^{[2]}_{(4\times 1)} + b^{[3]}_{(4\times1)} \\
+  a^{[3]}_{(4\times1)} &= \sigma(z^{[3]}_{(4\times1)})
+\end{aligned}
+$$
+
+\underline{Layer 4:}
+$$
+\begin{aligned}
+  z^{[4]}_{(2\times1)} &= W^{[4]}_{(2\times4)}a^{[3]}_{(4\times1)} + b^{[4]}_{(2\times1)} \\
+  a^{[4]}_{(2\times1)} &= \sigma(z^{[4]}_{(2\times1)})
+\end{aligned}
+$$
+
+
+\underline{Layer 5:}
+$$
+\begin{aligned}
+  z^{[5]}_{(1\times1)} &= W^{[5]}_{(1\times2)}a^{[4]}_{(2\times1)} + b^{[5]}_{(1\times1)} \\
+  a^{[5]}_{(1\times1)} &= \sigma(z^{[5]}_{(1\times1)}) \\
+  \hat{y}_{(1\times1)} &= a^{[5]}_{(1\times1)}
+\end{aligned}
+$$
+
+### d.
+
+To represent multiple observations, a couple of extra notations have to be introduced. The below notations assume that there are $m$ training examples.
+
+- $A^{[l]} = [a^{[l](1)} \ a^{[l](2)} \ a^{[l](3)} \cdots a^{[l](m)}]$ represents the $l^{th}$ activation layer output and column vector $a^{[l](i)}$ is the $l^{th}$ activation layer output for the $i^{th}$ training example.
+- $Z^{[l]} = [z^{[l](1)} \ z^{[l](2)} \ z^{[l](3)} \cdots z^{[l](m)}]$ is the input to the $l^{th}$ activation layer and $z^{[l](i)}$ is the input to the to the $l^{th}$ activation layer for the $i^{th}$ training example.
+- $B^{[l]} = [b^{[l](1)} \ b^{[l](2)} \ b^{[l](3)} \cdots b^{[l](m)}]$ is a matrix where the $i^{th}$ column is the bias input to the $l^{th}$ layer for the $i^{th}$ training example.
+
+\underline{Layer 1:}
+$$
+\begin{aligned}
+  Z^{[1]}_{(3\times m)} &= W^{[1]}_{(3\times 2)}A^{[0]}_{(2\times m)} + b^{[1]}_{(3\times m)} \\
+  A^{[1]}_{(3\times m)} &= \sigma(Z^{[1]}_{(3\times m)})
+\end{aligned}
+$$
+
+\underline{Layer 2:}
+$$
+\begin{aligned}
+  Z^{[2]}_{(4\times m)} &= W^{[2]}_{(4\times 3)}A^{[1]}_{(3\times m)} + B^{[2]}_{(4\times m)} \\
+  A^{[2]}_{(4\times m)} &= \sigma(Z^{[2]}_{(4\times m)})
+\end{aligned}
+$$
+
+\underline{Layer 3:}
+$$
+\begin{aligned}
+  Z^{[3]}_{(4\times m)} &= W^{[3]}_{(4\times4)}A^{[2]}_{(4\times m)} + B^{[3]}_{(4\times m)} \\
+  A^{[3]}_{(4\times m)} &= \sigma(Z^{[3]}_{(4\times m)})
+\end{aligned}
+$$
+
+\underline{Layer 4:}
+$$
+\begin{aligned}
+  Z^{[4]}_{(2\times m)} &= W^{[4]}_{(2\times4)}A^{[3]}_{(4\times m)} + B^{[4]}_{(2\times m)} \\
+  A^{[4]}_{(2\times m)} &= \sigma(Z^{[4]}_{(2\times m)})
+\end{aligned}
+$$
+
+
+\underline{Layer 5:}
+$$
+\begin{aligned}
+  Z^{[5]}_{(1\times m)} &= W^{[5]}_{(1\times2)}A^{[4]}_{(2\times m)} + B^{[5]}_{(1\times m)} \\
+  A^{[5]}_{(1\times m)} &= \sigma(Z^{[5]}_{(1\times m)}) \\
+  \hat{y}_{(1\times m)} &= A^{[5]}_{(1\times m)}
+\end{aligned}
+$$
+
+### e.
+
+#### a.
+
+$$
+\includegraphics[width=0.8\textwidth]{nn2.jpg}
+$$
+
+The notations used here will be consistent with those used in the above subproblems.
+
+#### b.
+
+Number of parameters = (3 x 3) + (4 x 4) + (4 x 5) + (2 x 5) + (3 x 3) = 9 + 16 + 20 + 10 + 9 = 64
+
+#### c.
+
+\underline{Layer 1:}
+$$
+\begin{aligned}
+  z^{[1]}_{(3\times1)} &= W^{[1]}_{(3\times 2)}a^{[0]}_{(2\times 1)} + b^{[1]}_{(3\times1)} \\
+  a^{[1]}_{(3\times1)} &= \sigma(z^{[1]}_{(3\times1)})
+\end{aligned}
+$$
+
+\underline{Layer 2:}
+$$
+\begin{aligned}
+  z^{[2]}_{(4\times1)} &= W^{[2]}_{(4\times 3)}a^{[1]}_{(3\times 1)} + b^{[2]}_{(4\times1)} \\
+  a^{[2]}_{(4\times1)} &= \sigma(z^{[2]}_{(4\times1)})
+\end{aligned}
+$$
+
+\underline{Layer 3:}
+$$
+\begin{aligned}
+  z^{[3]}_{(4\times1)} &= W^{[3]}_{(4\times4)}a^{[2]}_{(4\times 1)} + b^{[3]}_{(4\times1)} \\
+  a^{[3]}_{(4\times1)} &= \sigma(z^{[3]}_{(4\times1)})
+\end{aligned}
+$$
+
+\underline{Layer 4:}
+$$
+\begin{aligned}
+  z^{[4]}_{(2\times1)} &= W^{[4]}_{(2\times4)}a^{[3]}_{(4\times1)} + b^{[4]}_{(2\times1)} \\
+  a^{[4]}_{(2\times1)} &= \sigma(z^{[4]}_{(2\times1)})
+\end{aligned}
+$$
+
+
+\underline{Layer 5:}
+$$
+\begin{aligned}
+  z^{[5]}_{(3\times1)} &= W^{[5]}_{(3\times2)}a^{[4]}_{(2\times1)} + b^{[5]}_{(3\times1)} \\
+  a^{[5]}_{(3\times1)} &= \sigma(z^{[5]}_{(3\times1)}) \\
+  \hat{y}_{(1\times1)} &= max(a_1^{[5]}, a_2^{[5]}, a_3^{[5]})
+\end{aligned}
+$$
+$a_i^{[5]}$ has the dimensions $(1 \times 1)$.
+
+### d.
+
+\underline{Layer 1:}
+$$
+\begin{aligned}
+  Z^{[1]}_{(3\times m)} &= W^{[1]}_{(3\times 2)}A^{[0]}_{(2\times m)} + B^{[1]}_{(3\times m)} \\
+  A^{[1]}_{(3\times m)} &= \sigma(Z^{[1]}_{(3\times m)})
+\end{aligned}
+$$
+
+\underline{Layer 2:}
+$$
+\begin{aligned}
+  Z^{[2]}_{(4\times m)} &= W^{[2]}_{(4\times 3)}A^{[1]}_{(3\times m)} + B^{[2]}_{(4\times m)} \\
+  A^{[2]}_{(4\times m)} &= \sigma(Z^{[2]}_{(4\times m)})
+\end{aligned}
+$$
+
+\underline{Layer 3:}
+$$
+\begin{aligned}
+  Z^{[3]}_{(4\times m)} &= W^{[3]}_{(4\times4)}A^{[2]}_{(4\times m)} + B^{[3]}_{(4\times m)} \\
+  A^{[3]}_{(4\times m)} &= \sigma(Z^{[3]}_{(4\times m)})
+\end{aligned}
+$$
+
+\underline{Layer 4:}
+$$
+\begin{aligned}
+  Z^{[4]}_{(2\times m)} &= W^{[4]}_{(2\times4)}A^{[3]}_{(4\times m)} + B^{[4]}_{(2\times m)} \\
+  A^{[4]}_{(2\times m)} &= \sigma(Z^{[4]}_{(2\times m)})
+\end{aligned}
+$$
+
+
+\underline{Layer 5:}
+$$
+\begin{aligned}
+  Z^{[5]}_{(3\times m)} &= W^{[5]}_{(3\times2)}A^{[4]}_{(2\times m)} + B^{[5]}_{(3\times m)} \\
+  A^{[5]}_{(3\times m)} &= \sigma(Z^{[5]}_{(3\times m)}) \\
+  \hat{y}_{(1\times m)} &= max(A_1^{[5]}, A_2^{[5]}, A_3^{[5]})
+\end{aligned}
+$$
+
+$A_i^{[5]}$ has the dimensions $(1\times m)$.
+

@@ -1,0 +1,857 @@
+---
+title: "Solutions to Homework 3"
+author: "Nakul Camasamudram"
+date: "10/18/2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(comment = '>')
+
+# Imports
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+```
+
+## Problem 1
+
+**(a)**
+```{r}
+set.seed(123)
+prob_func_p1 <- function(x1, x2) {
+  return(1 / (1 + exp(-(-3 + x1 + x2))))
+}
+
+p1_func <- function(seed_value) {
+  set.seed(seed_value)
+  N <- 50
+  x1 <- runif(N, min=0, max=3)
+  x2 <- runif(N, min=0, max=3)
+  p_of_1 <- prob_func_p1(x1, x2)
+  y <- rbinom(N, 1, p_of_1)
+  return(data.frame(x1, x2, y))
+}
+
+training_data <- p1_func(123)
+validation_data <- p1_func(456)
+```
+
+**(b)**
+
+```{r}
+# Logistic Regression
+glm.fit <- glm(y ~ x1 + x2, data = training_data, family = binomial)
+print(glm.fit)
+plot(glm.fit)
+glm.pred <- predict(glm.fit, newdata = validation_data, type = "response")
+t = table(actual= validation_data$y, predict=rbinom(50, 1, glm.pred))
+cat("Proportion of correctly classified observations for Logistic Regression : ", (sum(diag(t)))/sum(t))
+
+# LDA
+library(MASS)
+lda.fit <- lda(y ~ x1 + x2, data = training_data)
+print(lda.fit)
+plot(lda.fit)
+lda.pred <- predict(lda.fit, newdata = validation_data)
+t = table(actual= validation_data$y, predict=lda.pred$class)
+cat("Proportion of correctly classified observations for LDA : ", (sum(diag(t)))/sum(t))
+
+# Plots
+p <- ggplot(data = validation_data, aes(x = x1, y = x2)) +
+          geom_point(aes(color = y))
+# True decision boundary
+p <- p + geom_abline(slope = -1, intercept = 3, linetype = "dashed")
+# Logistic Regression decision boundary
+p <- p + geom_abline(slope = -glm.fit$coefficients[2], intercept = -glm.fit$coefficients[1], color = "red")
+p
+```
+
+In the above graph, the dashed line is hte true decision boundary and the red line is the decision boundary for logistic regression.
+
+**c**
+
+1. Batch gradient descent
+
+```{r}
+batch_func <- function(learn_rate, train_df){
+  delta <- 1/1000
+  train_df_x <- cbind(x_0 = 1, train_df %>% dplyr::select(-y))
+  
+  b <- cbind(rep(0, (ncol(train_df_x))))
+  b_prev <- cbind(rep(1,(ncol(train_df_x))))
+  b_diff <- abs(b - b_prev)
+  y <- train_df$y
+  
+  i <- 0
+  while(i < 1000 && length(b_diff[b_diff > delta]) > 1) {
+    i <- i + 1
+    hyp <- 1 / (1 + exp(-1 * (as.matrix(train_df_x) %*% b)))
+    b_prev <- b
+    b <- b + (learn_rate / nrow(train_df)) * (t(as.matrix(train_df_x)) %*% (y-hyp))
+    b_diff <- abs(b - b_prev)
+  }
+return(c(b, i))
+}
+
+# The below code is from Guo & Gundogdu's solutions for HW2
+alpha <- seq(0.001, 4.001, 0.04)
+slopes <- rep(0, length(alpha))
+iterations <- rep(0, length(alpha))
+for (i in 1:length(alpha))
+{
+  slopes[i] <- batch_func(alpha[i],training_data)[2];
+  iterations[i] <- batch_func(alpha[i],training_data)[4];
+}
+par(mar = c(5,5,5,5))
+plot(alpha, slopes, type="b")
+plot(alpha, scale(iterations), type="b")
+
+```
+
+The optimal value of $\alpha$ seems to be 1.7.
+
+```{r}
+batch_learning_rate <- 1.7
+```
+
+
+2. Stochastic gradient descent
+
+```{r}
+stochastic_func <- function(learn_rate, train_df){
+  delta <- 1/1000
+  train_df_x <- cbind(x_0 = 1, train_df %>% dplyr::select(-y))
+  
+  b <- cbind(rep(0, (ncol(train_df_x))))
+  b_prev <- cbind(rep(1,(ncol(train_df_x))))
+  b_diff <- abs(b - b_prev)
+  
+  y <- train_df$y
+  
+  i <- 0
+  while(i < 1000 && length(b_diff[b_diff > delta]) > 1) {
+    b_prev <- b
+    for(j in 1:nrow(train_df_x)){
+      hyp <- 1 / (1 + exp(-1 * (as.matrix(train_df_x[j,]) %*% b)))
+      b <- b + (learn_rate / nrow(train_df)) * (t(as.matrix(train_df_x[j,])) %*% (y[j] - hyp))
+    }
+    i <- i+1
+    b_diff <- abs(b - b_prev)
+  }
+  return(c(b,i))
+}
+
+# The below code is from Guo & Gundogdu's solutions for HW2
+alpha <- seq(0.001, 4.001, 0.04)
+slopes <- rep(0, length(alpha))
+iterations <- rep(0, length(alpha))
+for (i in 1:length(alpha))
+{
+  slopes[i] <- stochastic_func(alpha[i], training_data)[2];
+  iterations[i] <- stochastic_func(alpha[i], training_data)[4];
+}
+plot(alpha,slopes,type="b")
+plot(alpha,scale(iterations),type="b")
+```
+
+
+```{r}
+# Optimal alpha
+stoch_learning_rate <- alpha[which(slopes==max(slopes))]
+
+# Number of iterations for the above alpha
+stoch_iterations <- iterations[which(slopes==max(slopes))]
+
+cat("Alpha: ", stoch_learning_rate)
+cat(" Number of iterations: ", stoch_iterations)
+```
+
+The optimal value of $\alpha$ seems to be 1.041.
+
+**d**
+
+Linear Discriminant Analysis
+
+```{r}
+
+lda_func <- function(train_df, validation_df) {
+  groups <- unique(train_df$y)
+  mu <- data_frame()
+  constant <- c()
+  covar_inv <- solve(cov(train_df %>% dplyr::select(-y)))
+  
+  for(k in groups) {
+    train_df_k <- train_df %>% filter(y==k) %>% dplyr::select(-y)
+    mu_k <- apply(train_df_k, 2, mean)
+    mu <- mu %>% bind_rows(data.frame(as.list(mu_k)))
+    pi_k <-nrow(train_df_k) / nrow(train_df)
+    constant_k <- (0.5 * t(mu_k) %*% covar_inv %*% matrix(mu_k)) + log(pi_k)
+    constant <- c(constant, constant_k)
+  }
+  lda_model <- data.frame(groups = groups, constant = constant) %>% bind_cols(mu=mu)
+  
+  y_pred_func <- function(x) {
+    delta_x <- -Inf
+    y_pred <- NULL
+    for(k in groups) {
+      mu_k <- data.matrix(lda_model %>% filter(groups==k) %>% dplyr::select(-groups) %>% dplyr::select(-constant))
+      delta_x_k <- x %*% covar_inv %*% t(mu_k) - (lda_model %>% filter(groups==k) %>% pull(constant))
+      if(delta_x_k > delta_x) {
+        y_pred <- k
+        delta_x <- delta_x_k
+      }
+    }
+    return(y_pred)
+  }
+  
+  y_pred <- apply(validation_df %>% dplyr::select(-y), 1, y_pred_func)
+  return(y_pred)
+}
+
+lda_prediction <- lda_func(training_data, validation_data)
+t = table(actual = validation_data$y, predict = lda_prediction)
+cat("Proportion of correctly classified observations for LDA : ", (sum(diag(t)))/sum(t)*100, "%")
+```
+
+**e**
+
+Functions to compute the errors for regression and LDA:
+```{r}
+
+# Batch and Stochastic Regression errors
+reg_errors <- function(b, validation_df){
+  b <- b[-1 * length(b)]
+  validation_df_x <- cbind(x_0 = 1, validation_df %>% dplyr::select(-y))
+  hyp <- 1 / (1 + exp(-1 * (as.matrix(validation_df_x) %*% b)))
+  y_pred <- rbinom(nrow(validation_df), 1, hyp)
+  t <- table(actual=validation_df$y, predict=y_pred)
+  correct <- (sum(diag(t))) / sum(t)
+  return(1 - correct)
+}
+
+# LDA errors
+lda_errors <- function(validation_data, lda_prediction){
+  t <- table(actual = validation_data$y, predict = lda_prediction)
+  correct <- (sum(diag(t)))/sum(t)
+  return(1-correct)
+}
+
+```
+
+Let's find the errors and plot them
+```{r}
+# Parts of below code are from Guo & Gundogdu's HW2 solution
+N <- 200
+
+batch_error <- rep(0, N);
+stoch_error <- rep(0, N);
+lda_error <- rep(0, N);
+
+for (i in 1:N)
+{
+  batch_error[i] <- reg_errors(batch_func(batch_learning_rate, training_data), validation_data)
+  stoch_error[i] <- reg_errors(stochastic_func(stoch_learning_rate, training_data), validation_data)
+  lda_error[i] <- lda_errors(validation_data, lda_func(training_data, validation_data))
+}
+
+par(mfrow=c(1, 3))
+hist(batch_error)
+hist(stoch_error)
+hist(lda_error)
+
+```
+
+The error distributions of batch and stochastic gradient descents look similar and sort of approximate the normal distribution. The LDA error is constant at 0.5 at every iteration.
+
+## Problem 2
+
+**a**
+
+```{r}
+
+prob_p2_func <- function(x) {
+  return(1/(1 + exp(-(-3 + x))))
+}
+
+p2_func <- function(seed_value) {
+  set.seed(seed_value)
+  N <- 50
+  x1 <- runif(N, min=0, max=3)
+  x2 <- runif(N, min=0, max=3)
+  x3 <- 0.8 * x2 + rnorm(N, mean = 0, sd = sqrt(0.75))
+  x4 <- 0.8 * x2 + rnorm(N, mean = 0, sd = sqrt(0.75))
+  x5 <- runif(N, min=0, max=3)
+  x6 <- runif(N, min=0, max=3)
+  x7 <- runif(N, min=0, max=3)
+  x8 <- runif(N, min=0, max=3)
+  x9 <- runif(N, min=0, max=3)
+  x10 <- runif(N, min=0, max=3)
+  x11 <- runif(N, min=0, max=3)
+  x12 <- runif(N, min=0, max=3)
+  p_of_1 <- prob_p2_func(x1 + x2)
+  y <- rbinom(N, 1, p_of_1)
+  return(data.frame(x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, y))
+}
+
+training_data <- p2_func(123)
+validation_data <- p2_func(456)
+
+```
+
+**b**
+
+1. Batch gradient descent with regularization
+
+```{r}
+reg_batch_func <- function(learn_rate, train_df, lambda){
+  delta <- 1/1000
+  train_df_x <- cbind(x_0 = 1, train_df %>% dplyr::select(-y))
+  
+  b <- cbind(rep(0, (ncol(train_df_x))))
+  b_prev <- cbind(rep(1,(ncol(train_df_x))))
+  b_diff <- abs(b - b_prev)
+  y <- train_df$y
+  
+  i <- 0
+  while(i < 1000 && length(b_diff[b_diff > delta]) > 1) {
+    i <- i + 1
+    cost <- 1 / (1 + exp(-1 * (as.matrix(train_df_x) %*% b)))
+    b_prev <- b
+    b <- b + (learn_rate / nrow(train_df)) * (t(as.matrix(train_df_x)) %*% (y - cost) - (b * lambda))
+    b_diff <- abs(b - b_prev)
+  }
+return(c(b, i))
+}
+
+
+# I chose values of lambda by doubling them each time. 
+# I saw this technique in one of Andrew Ng's Machine Learning videos
+lambdas <- c()
+i = 0.1
+while(length(lambdas) < 10){
+  lambdas <- c(lambdas, i)
+  i <- i*2
+}
+
+# Obtained from previous questions
+e <- rep(0, length(lambdas))
+
+for(i in 1:length(lambdas)){
+  e[i] <- reg_errors(reg_batch_func(batch_learning_rate, training_data, lambdas[i]), validation_data)
+}
+
+plot(lambdas, e, type="b")
+
+```
+
+```{r}
+
+# Optimum lambda
+batch_opt_lambda <- lambdas[which(e==min(e))][1]
+batch_opt_lambda
+
+```
+
+2. Stochastic gradient descent
+
+```{r}
+reg_stochastic_func <- function(learn_rate, train_df, lambda){
+  delta <- 1/1000
+  train_df_x <- cbind(x_0 = 1, train_df %>% dplyr::select(-y))
+  
+  b <- cbind(rep(0, (ncol(train_df_x))))
+  b_prev <- cbind(rep(1,(ncol(train_df_x))))
+  b_diff <- abs(b - b_prev)
+  
+  y <- train_df$y
+  
+  i <- 0
+  while(i < 1000 && length(b_diff[b_diff > delta]) > 1) {
+    b_prev <- b
+    for(j in 1:nrow(train_df_x)){
+      cost <- 1 / (1 + exp(-1 * (as.matrix(train_df_x[j,]) %*% b)))
+      b <- b + (learn_rate / nrow(train_df)) * (t(as.matrix(train_df_x[j,])) %*% (y[j] - cost) - (b * lambda))
+    }
+    i <- i+1
+    b_diff <- abs(b - b_prev)
+  }
+  return(c(b,i))
+}
+
+# I chose values of lambda by doubling them each time. 
+# I saw this technique in one of Andrew Ng's Machine Learning videos
+lambdas = c()
+i = 0.1
+while(length(lambdas) < 10){
+  lambdas <- c(lambdas, i)
+  i <- i*2
+}
+
+# Obtained from previous questions
+e <- rep(0, length(lambdas))
+
+for(i in 1:length(lambdas)){
+  e[i] <- reg_errors(reg_batch_func(stoch_learning_rate, training_data, lambdas[i]), validation_data)
+}
+
+plot(lambdas, e, type="b")
+
+```
+
+```{r}
+
+# Optimum lambda
+stochastic_opt_lambda <- lambdas[which(e==min(e))][1]
+stochastic_opt_lambda
+
+```
+
+**c**
+
+```{r}
+
+lda_reg_func <- function(train_df, validation_df, alpha) {
+  groups <- unique(train_df$y)
+  mu <- data_frame()
+  constant <- c()
+  covar_inv <- (alpha*cov(train_df %>% dplyr::select(-y)) + (1 - alpha)*(mean(diag(cov(train_df %>% dplyr::select(-y)))))) 
+  
+  for(k in groups) {
+    train_df_k <- train_df %>% filter(y==k) %>% dplyr::select(-y)
+    
+    mu_k <- apply(train_df_k, 2, mean)
+    mu <- mu %>% bind_rows(data.frame(as.list(mu_k)))
+    pi_k <-nrow(train_df_k) / nrow(train_df)
+    
+    constant_k <- (0.5 * t(mu_k) %*% covar_inv %*% matrix(mu_k)) + log(pi_k)
+    constant <- c(constant, constant_k)
+  }
+  lda_reg_model <- data.frame(groups = groups, constant = constant) %>% bind_cols(mu=mu)
+  
+  y_pred_func <- function(x) {
+    delta_x <- -Inf
+    y_pred <- NULL
+    for(k in groups) {
+      mu_k <- data.matrix(lda_reg_model %>% filter(groups==k) %>% dplyr::select(-groups) %>% dplyr::select(-constant))
+      delta_x_k <- x %*% covar_inv %*% t(mu_k) - (lda_reg_model %>% filter(groups==k) %>% pull(constant))
+      if(delta_x_k > delta_x) {
+        y_pred <- k
+        delta_x <- delta_x_k
+      }
+    }
+    return(y_pred)
+  }
+  
+  y_pred <- apply(validation_df %>% dplyr::select(-y), 1, y_pred_func)
+  return(y_pred)
+}
+
+
+# I chose values of alphas by doubling them each time. 
+# I saw this technique in one of Andrew Ng's Machine Learning videos
+alphas <- c()
+i = 0.1
+while(length(alphas) < 10){
+  alphas <- c(alphas, i)
+  i <- i*2
+}
+
+# Obtained from previous questions
+e <- rep(0, length(alphas))
+
+for(i in 1:length(alphas)){
+  e[i] <- lda_errors(validation_data, lda_reg_func(training_data, validation_data, alphas[i]))
+}
+
+plot(alphas, e, type="b")
+
+```
+
+```{r}
+# Optimum alpha
+
+lda_opt_alpha <- alphas[which(e==min(e))][1]
+lda_opt_alpha
+
+```
+
+**d**
+
+```{r}
+# Parts of below code are from Guo & Gundogdu's HW2 solution
+N <- 200
+
+batch_error <- rep(0, N);
+stoch_error <- rep(0, N);
+lda_error <- rep(0, N);
+reg_batch_error <- rep(0, N);
+reg_stoch_error <- rep(0, N);
+reg_lda_error <- rep(0, N);
+
+for (i in 1:N)
+{
+  batch_error[i] <- reg_errors(batch_func(batch_learning_rate, training_data), validation_data)
+  stoch_error[i] <- reg_errors(stochastic_func(stoch_learning_rate, training_data), validation_data)
+  lda_error[i] <- lda_errors(validation_data, lda_func(training_data, validation_data))
+  
+  reg_batch_error[i] <- reg_errors(reg_batch_func(batch_learning_rate, training_data, batch_opt_lambda), validation_data)
+  reg_stoch_error[i] <- reg_errors(reg_stochastic_func(stoch_learning_rate, training_data, stochastic_opt_lambda), validation_data)
+  reg_lda_error[i] <- lda_errors(validation_data, lda_reg_func(training_data, validation_data, lda_opt_alpha))
+}
+
+par(mfrow = c(1, 3))
+hist(batch_error)
+hist(stoch_error)
+hist(lda_error)
+hist(reg_batch_error)
+hist(reg_stoch_error)
+hist(reg_lda_error)
+
+```
+
+**e**
+
+```{r}
+# Mean and variance of errors
+
+cat("Batch gradient descent. Mean: ", mean(batch_error), " Variance: ", var(batch_error), " Median: ", median(batch_error),"\n")
+cat("Stochastic gradient descent. Mean: ", mean(stoch_error), " Variance: ", var(stoch_error), " Median: ", median(stoch_error), "\n")
+cat("LDA Mean: ", mean(lda_error), " Variance: ", var(lda_error), " Median: ", median(lda_error), "\n")
+cat("Regularized Batch gradient descent. Mean: ", mean(reg_batch_error), " Variance: ", var(reg_batch_error), " Median: ", median(reg_batch_error), "\n")
+cat("Regularized Stochastic gradient descent. Mean: ", mean(reg_stoch_error), " Variance: ", var(reg_stoch_error), " Median: ", median(reg_stoch_error), "\n")
+cat("Regularized LDA. Mean: ", mean(reg_lda_error), " Variance: ", var(reg_lda_error), " Median: ", median(reg_lda_error), "\n")
+```
+
+The average error of batch gradient descent is better than stochastic. Regularization seems to have helped reduce the average error albeit not by much. Similarly, regularization seems to have reduced the error for LDA.
+
+## Problem 3
+**a**
+Given an input instance $x$ with two predictors $X1$ and $X2$ such as $x_i = [1 \ \ x_i^{(1)} \ \ x_i^{(2)}]$. The group associated with it is as below, considering that there are three output classes.
+
+$\hat{f}(x) = max(\begin{bmatrix} P(y=1|x) \\ P(y=2|x) \\ P(y=3|x)\end{bmatrix}) = \frac{1}{\sum_{k=1}^K e^{(\beta_k)^T}x} \cdot \begin{bmatrix} e^{(\beta_1)^Tx} \\ e^{(\beta_2)^Tx} \\ e^{(\beta_3)^Tx} \end{bmatrix}$
+
+Here, a $\beta_i = \begin{bmatrix} \beta_i^{(0)} \beta_i^{(1)} \beta_i^{(2)}\end{bmatrix}$. Hence, the number of parameters is 3.
+
+**b**
+Since $X_1$ is categorical, dummy variables $X_{11}, X_{12}, X_{13}, X_{14}$ can be used to represent the classes of $X_1$. Then, given an input instance $x_i = [1 \ \ x_i^{(11)} \ \ x_i^{(12)} \ \ x_i^{(13)} \ \ x_i^{(14)} \ \ x_i^{(2)}]$, the group associated with it is computed as in $3 a.$.
+
+However, $\beta_i = \begin{bmatrix} \beta_i^{(0)} \beta_i^{(11)} \beta_i^{(12)} \beta_i^{(13)} \beta_i^{(14)} \beta_i^{(2)}\end{bmatrix}$. Hence, the number of parameters is 6.
+
+
+## Problem 4
+
+#### a. Data exploration
+
+```{r}
+rm(list=ls())
+set.seed(123)
+
+# Read the data
+saheart <- read.table("SAheart.txt", sep = ",", header = TRUE) %>% dplyr::select(-row.names)
+
+dim(saheart)
+head(saheart)
+```
+
+```{r}
+levels(saheart$famhist)
+```
+
+There are 462 rows in the dataset. Let's separate them equally into training and validation sets. Also, $famhist$ is categorical with values "Absent" and "Present". Let's represent them as "0" and "1" respectively.
+
+```{r}
+# Categorial to numeric
+levels(saheart$famhist) <- c(0, 1)
+saheart$famhist <- as.character(saheart$famhist)
+saheart$famhist <- as.numeric(saheart$famhist)
+head(saheart)
+
+# Split dataset
+ratio <- sample(1:nrow(saheart), 231)
+saheart_training <- saheart[ratio, ]
+saheart_validation <- saheart[-ratio, ]
+```
+
+One variable summary statistics
+
+```{r}
+summary(saheart_training)
+```
+
+Two variable summary statistics
+
+```{r}
+pairs(saheart_training) # scatterplot matrix
+```
+
+```{r}
+round(cor(saheart_training), digits = 2)
+```
+$chd$ is not correlated with any of the predictors. $adiposity$, $obesity$, $age$ have higher correlations as compared to others which sort of makes sense considering the context.
+
+```{r}
+smoothScatter(saheart$adiposity, saheart$obesity)
+smoothScatter(saheart$adiposity, saheart$age)
+```
+
+There is no missing data in the training set.
+
+```{r}
+any(is.na(saheart_training))
+```
+
+
+Let's look for the presence of any outliers.
+
+```{r}
+boxplot(scale(saheart_training %>% dplyr::select(-famhist)))
+```
+
+There seem to be a few outlier points. But, let's leave them as is for now.
+
+#### b. Logistic Regression and variable selection
+
+**Logistic Regression with all the predictors**
+
+```{r}
+glm.fit <- glm(chd~., data=saheart_training, family="binomial")
+summary(glm.fit)
+```
+$famhist, typea$ and $age$ seem to be good predictors of $chd$ according to their low p-values.
+
+
+**All subsets selection**
+
+```{r}
+library(bestglm)
+glm.fit.allsubsets <- bestglm(Xy = saheart_training, family = binomial, IC = "AIC", method = "exhaustive")
+
+summary(glm.fit.allsubsets)
+glm.fit.allsubsets$BestModel$coefficients
+```
+
+As seen above, from all subsets selection, the best model is the one with the predictors $tobacco, ldl, famhist, typea, obesity$ and $age$.
+
+#### c. Linear Discriminant Analysis
+
+Since LDA assumes that the predictors are normally distributed, the categorical predictor $famhist$ will need to be excluded.
+
+```{r}
+library(MASS)
+lda.fit <- lda(chd~sbp + tobacco + ldl + adiposity + typea + obesity + alcohol + age, data = saheart_training)
+lda.fit
+```
+ From all subsets selection above, the selected predictors and their coefficients are 
+ $tobacco$ = 0.07652904, $ldl$ = 0.15606856, $typea$ = 0.04984199 and $age$ = 0.04614363. The respective coeffcients of LDA and best subsets are very close in value. $abp, adiposity$, and $alcohol$ were not selected by best subset selection and its coefficient in LDA is very close to $0$.
+ 
+#### d. Logistic Regression with Lasso regularization
+
+**1. Produce and interpret plot of paths of the individual coefficients**
+
+```{r}
+library(glmpath)
+glmpath.fit <- glmpath(y = saheart_training[, 10],
+                       x = as.matrix(saheart_training[,-10]),
+                       family = binomial)
+par(mfrow=c(1,1), mar=c(4,4,4,8))
+plot(glmpath.fit, xvar="lambda")
+```
+
+Different values of $\lambda$ need to tried to find the one that minimizes error by cross-validation. Above, the estimated coefficients for different values of $\lambda$ are plotted to see the predictors are being selected for each value, to see the effect of regularization. When $\lambda$ is 0, there are more non-zero coefficients, but, as $\lambda$ increases, the coefficients of many of the predictors become 0.
+
+**2. Produce the plot of regularization parameter vs cross-validated predicted error**
+
+```{r}
+cv.glmpath.fit <- cv.glmpath(x=(as.matrix(saheart_training[,-10])), y=saheart_training[,10], family=binomial, nfold=10, plot.it=T, type = "response", mode = "lambda")
+```
+
+The above function plots the cross validation errors for different values of $\lambda$.
+
+**3. Select regularization parameter, and the corresponding predictors**
+
+Let's look at the $\lambda$ that has the minimum cross validation error
+
+```{r}
+# Log lambda
+cv.min_log_lambda <- cv.glmpath.fit$fraction[which.min(cv.glmpath.fit$cv.error)]
+cv.min_log_lambda
+
+# lambda
+exp(cv.min_log_lambda)
+```
+
+**4. Fit the model with the selected predictors only on the full training set**
+
+```{r}
+pred.coef <- predict(glmpath.fit, s=cv.min_log_lambda, mode="norm.fraction", type="coefficients")
+pred.coef
+```
+
+
+### e. Shrunken centroid model
+
+1. Use cross-validation to select the best regularization parameter
+
+```{r}
+library(pamr)
+
+pamr_training <- list(x=t(as.matrix(saheart_training[,-10])), y=saheart_training[,10])
+pamr_validation <- list(x=t(as.matrix(saheart_validation[,-10])),y=saheart_validation[,10])
+
+
+pamr.fit <- pamr.train(pamr_training)
+print(pamr.fit$centroids)
+
+pamr.cv.fit <- pamr.cv(pamr.fit, pamr_training)
+pamr.cv.fit
+
+par(mar=c(1,1,1,1))
+pamr.plotcv(pamr.cv.fit)
+```
+
+For some reason, I'm unable to get a good represenation of the graphs in this document. However, upon zooming into it, I observed that the misclassification error is small for small values of threshold. Unlike for $chd$ = 0, as the threshold increases, the misclassification of $chd$ = 1 samples increases. I'll choose a threshold of 0.6 as it looks like it has the largest shrinkage without a resulting increase in error.
+
+Let’s look the confusion matrix:
+
+```{r}
+pamr.confusion(pamr.cv.fit, threshold=.6)
+```
+
+2. Refit the model with the selected regularization parameter
+```{r}
+# Refit the classifier on the full dataset, but using the threshold
+pamr.fit <- pamr.train(pamr_training, threshold=0.6)
+pamr.fit
+```
+
+
+3. Visualize the centroids of the selected model
+```{r}
+# pamr.plotcen(pamr.fit, pamr_training, threshold=0.6)
+
+# Could not stitch the plot produced by the above command. 
+# I've attached it in the folder instead with the name "p_4_e_3.jpg" 
+```
+
+
+### f. Classifier performance
+
+**1. Evaluation on the training and validation sets**
+To check the performance of the classifiers, we plot ROC curves to compare their areas. Higher the area, better the classifier.
+
+**For logistic regression with all predictors:**
+
+```{r}
+library(ROCR)
+
+# Training
+glm.pred <- predict(glm.fit, saheart_training %>% dplyr::select(-chd), type="response")
+glm.pred <- prediction(glm.pred, saheart_training %>% pull(chd))
+glm.perf <- performance(glm.pred, 'tpr', 'fpr')
+plot(glm.perf, colorize=F, main="Training - Logistic Regression with all predictors")
+# Area
+cat("Area ", unlist(attributes(performance(glm.pred, "auc"))$y.values))
+
+# Validation
+glm.pred.validation <- predict(glm.fit, saheart_validation %>% dplyr::select(-chd), type="response")
+glm.pred.validation <- prediction(glm.pred.validation, saheart_validation %>% pull(chd))
+glm.perf.validation <- performance(glm.pred.validation, 'tpr', 'fpr')
+plot(glm.perf.validation, colorize=F, main="Validation - Logistic Regression with all predictors")
+# Area
+cat("Area ", unlist(attributes(performance(glm.pred.validation, "auc"))$y.values))
+```
+
+**For logistic regression with subset selection: **
+
+```{r}
+
+# Training
+glm.pred.allsubsets <- predict(glm.fit.allsubsets$BestModel, saheart_training %>% dplyr::select(-chd),
+type="response")
+glm.pred.allsubsets <- prediction(glm.pred.allsubsets,saheart_training %>% pull(chd))
+glm.perf.allsubsets <- performance(glm.pred.allsubsets, 'tpr', 'fpr')
+plot(glm.perf.allsubsets, colorize=F, main="Training - Logistic Regression with subset selection")
+# Area
+cat("Area ", unlist(attributes(performance(glm.pred.allsubsets, "auc"))$y.values))
+
+# Validation
+glm.pred.allsubsets.validation <- predict(glm.fit.allsubsets$BestModel, saheart_validation %>% dplyr::select(-chd), type="response")
+glm.pred.allsubsets.validation <- prediction(glm.pred.allsubsets.validation, saheart_validation %>% pull(chd))
+glm.perf.allsubsets.validation <- performance(glm.pred.allsubsets.validation, 'tpr', 'fpr')
+plot(glm.perf.allsubsets.validation, colorize=F, main="Validation - Logistic Regression with subset selection")
+# Area
+cat("Area ", unlist(attributes(performance(glm.pred.allsubsets.validation, "auc"))$y.values))
+```
+
+**For LDA classifier:**
+
+```{r}
+# Training
+lda.pred <- predict(lda.fit, saheart_training %>% dplyr::select(-chd))$posterior[,2]
+lda.pred <- prediction(lda.pred, saheart_training %>% pull(chd))
+lda.perf <- performance(lda.pred, "tpr", "fpr")
+plot(lda.perf, colorize=F, main="Training - LDA")
+# Area
+cat("Area ", unlist(attributes(performance(lda.pred, "auc"))$y.values))
+
+# Validation
+lda.pred.valid <- predict(lda.fit, saheart_validation %>% dplyr::select(-chd))$posterior[,2]
+lda.pred.valid <- prediction(lda.pred.valid, saheart_validation %>% pull(chd))
+lda.perf.valid <- performance(lda.pred.valid, "tpr", "fpr")
+plot(lda.perf.valid, colorize=F, main="Validation - LDA")
+# Area
+cat("Area ", unlist(attributes(performance(lda.pred.valid, "auc"))$y.values))
+```
+
+**For Lasso regression:**
+
+```{r}
+# Training
+glmpath.pred <- predict(glmpath.fit,newx=as.matrix(saheart_training %>% dplyr::select(-chd)),s=cv.min_log_lambda, mode="norm.fraction",type="response")
+glmpath.pred <- prediction(predictions=glmpath.pred, labels=saheart_training %>% pull(chd))
+glmpath.perf <- performance(glmpath.pred, "tpr", "fpr")
+plot(glmpath.perf, colorize=F, main="Train - LASSO Regression")
+# Area
+cat("Area ", unlist(attributes(performance(glmpath.pred, "auc"))$y.values))
+
+# Validation
+glmpath.pred.validation <- predict(glmpath.fit,newx=as.matrix(saheart_validation %>% dplyr::select(-chd)),
+s=cv.min_log_lambda,mode="norm.fraction",type="response")
+glmpath.pred.validation <- prediction(predictions=glmpath.pred.validation,
+labels=saheart_validation %>% pull(chd))
+glmpath.perf.valid <- performance(glmpath.pred.validation, "tpr", "fpr")
+plot(glmpath.perf.valid, colorize=F, main="Validation - LASSO")
+# Area
+cat("Area ", unlist(attributes(performance(glmpath.pred.validation, "auc"))$y.values))
+```
+
+**For nearest shrunked centroids:**
+
+```{r}
+# Train
+pamr.pred <- pamr.predict(pamr.fit, newx=pamr_training$x, threshold=0.6, type="posterior")[,2]
+pamr.pred <- prediction(predictions=pamr.pred, labels=saheart_training %>% pull(chd))
+pamr.perf <- performance(pamr.pred, "tpr", "fpr")
+plot(pamr.perf, colorize=F, main="Train - Nearest shrunken centroids")
+# Area
+cat("Area ", unlist(attributes(performance(pamr.pred, "auc"))$y.values))
+
+# Validation
+pamr.pred.validation <- pamr.predict(pamr.fit, newx=pamr_validation$x, threshold=0.6, type="posterior")[,2]
+pamr.pred.validation <- prediction(predictions=pamr.pred.validation, labels=saheart_validation %>% pull(chd))
+pamr.perf.validation <- performance(pamr.pred.validation, "tpr", "fpr")
+plot(pamr.perf.validation, colorize=F, main="Validation - Nearest shrunken centroids")
+# Area
+cat("Area ", unlist(attributes(performance(pamr.pred.validation, "auc"))$y.values))
+```
+
+### g. Summary
+
+From the ROC curves, it can be seen that the area under the curves for training sets is greater than the ones for validation sets, as it should be.
+
+On both the training and validation sets, logistic regression with lasso regularization has the best performance. It has fewer predictors and can take into account categorical predictors as well unlike LDA.
